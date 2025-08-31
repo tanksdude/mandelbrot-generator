@@ -18,7 +18,7 @@ constexpr color_type COLOR_MAX_VAL = std::numeric_limits<color_type>::max();
 
 inline int ImageMagickConvert(const std::string& output_filename) {
 	#ifdef WIN32
-	return std::system(std::string("magick convert " + (output_filename + ".txt") + " " + output_filename).c_str());
+	return std::system(std::string("magick "  + (output_filename + ".txt") + " " + output_filename).c_str());
 	#else
 	return std::system(std::string("convert " + (output_filename + ".txt") + " " + output_filename).c_str());
 	#endif
@@ -269,7 +269,7 @@ void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start
 
 int main(int argc, char** argv) {
 	if (argc < 9) {
-		std::cout << "usage: " << argv[0] << " <num_threads> <x_start> <x_end> <y_start> <y_end> <image_x_size> <image_y_size> <output_name> <optional coloring file>" << std::endl;
+		std::cout << "usage: " << argv[0] << " <num_threads> <x_start> <x_end> <y_start> <y_end> <image_x_size> <image_y_size> <output_name> [<optional coloring file>]" << std::endl;
 		return 1;
 	}
 
