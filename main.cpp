@@ -12,6 +12,10 @@
 #include <cstdio> //could use <filesystem> but I just want remove()
 #include <cstdlib> //for system() to interact with ImageMagick
 
+#ifdef USE_MAGICK_PLUSPLUS
+#include <Magick++.h>
+#endif
+
 typedef float c_float; //complex float precision
 typedef uint8_t color_type;
 constexpr color_type COLOR_MAX_VAL = std::numeric_limits<color_type>::max();
@@ -59,6 +63,9 @@ public:
 	std::string toString() const {
 		return std::to_string(xpos) + "," + std::to_string(ypos) + ": (" + std::to_string(color.getR()) + "," + std::to_string(color.getG()) + "," + std::to_string(color.getB()) + ")";
 	}
+	inline c_float getRf() const noexcept { return color.getR() / COLOR_MAX_VAL; }
+	inline c_float getGf() const noexcept { return color.getG() / COLOR_MAX_VAL; }
+	inline c_float getBf() const noexcept { return color.getB() / COLOR_MAX_VAL; }
 };
 
 int MAX_ITER = 10000;
@@ -162,7 +169,7 @@ void mandelbrot_helper(c_float x_start, c_float x_end, c_float y_start, c_float 
 	std::swap(y_start, y_end);
 
 	//now actually do the calculation:
-	std::chrono::time_point<std::chrono::steady_clock> startTime = std::chrono::steady_clock::now();
+	//std::chrono::time_point<std::chrono::steady_clock> startTime = std::chrono::steady_clock::now();
 	for (int y = image_y_start; y < image_y_end; y++) {
 		for (int x = image_x_start; x < image_x_end; x++) {
 			//using the center of the pixel
@@ -189,7 +196,7 @@ void mandelbrot_helper(c_float x_start, c_float x_end, c_float y_start, c_float 
 			pixelGrid[x][y] = ImagePixel(x, y, iterationColors[colorIndex].second);
 		}
 	}
-	std::chrono::time_point<std::chrono::steady_clock> endTime = std::chrono::steady_clock::now();
+	//std::chrono::time_point<std::chrono::steady_clock> endTime = std::chrono::steady_clock::now();
 
 	//std::cout << "mandelbrot: " << "[" << image_y_start << "," << image_y_end << "] " << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms" << std::endl;
 }
@@ -224,6 +231,19 @@ void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start
 
 	std::cout << "mandelbrot: " << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms" << std::endl;
 
+	#ifdef USE_MAGICK_PLUSPLUS
+
+	Magick::Image generated_image(Magick::Geometry(image_width, image_height));
+	for (int i = 0; i < image_width; i++) {
+		for (int j = 0; j < image_height; j++) {
+			generated_image.pixelColor(i, j, Magick::ColorRGB(pixels[i][j].getRf(), pixels[i][j].getGf(), pixels[i][j].getBf()));
+		}
+	}
+
+	generated_image.write(output_filename);
+
+	#else
+
 	//text file for ImageMagick:
 	//could be multi-threaded, but this step usually takes <10% of the total time
 
@@ -256,6 +276,8 @@ void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start
 	endTime = std::chrono::steady_clock::now();
 	std::cout << "convert: " << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms" << std::endl;
 
+	#endif
+
 	//free:
 
 	for (int i = 0; i < image_width; i++) {
@@ -272,6 +294,12 @@ int main(int argc, char** argv) {
 		std::cout << "usage: " << argv[0] << " <num_threads> <x_start> <x_end> <y_start> <y_end> <image_x_size> <image_y_size> <output_name> [<optional coloring file>]" << std::endl;
 		return 1;
 	}
+	#ifdef USE_MAGICK_PLUSPLUS
+	Magick::InitializeMagick(argv[0]);
+	//std::cout << "Using Magick++\n";
+	#else
+	//std::cout << "Slow text file version\n";
+	#endif
 
 	int threadCount; //std::thread::hardware_concurrency() exists but there's no need to use it
 	c_float x_start, x_end, y_start, y_end;

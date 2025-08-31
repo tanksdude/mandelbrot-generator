@@ -2,25 +2,33 @@
 
 A small program that generates a portion of the [Mandelbrot set](https://en.wikipedia.org/wiki/Mandelbrot_set).
 
-Uses [ImageMagick](https://imagemagick.org/) to make the image.
+Uses [ImageMagick](https://imagemagick.org/) to make the image. The slow version creates a text file for ImageMagick to use, and the fast version uses the C++ API (Magick++).
 
 ## Prerequisites
 
 You need to have ImageMagick installed on your system. Linux: `sudo apt install imagemagick`
 
-I tried using Magick++ headers to directly use C++ code, but it was such a pain. (If you want to try for yourself, do `sudo apt install libmagick++-dev` and `sudo apt install graphicsmagick-libmagick-dev-compat`, and update the Makefile with some flags. It was too much effort to try to get working.)
+If you wish to use Magick++ (which is much faster!), you need to install that too. For Windows, just check the option in the installer (a Windows compile script for this program is not provided). For Linux, I believe `sudo apt install libmagick++-dev graphicsmagick-libmagick-dev-compat` is enough.
 
 ## Multi-threaded Results
 
-From my testing, >50% of the time spent in this program (depending on thread count) is waiting on ImageMagick. I didn't expect ImageMagick to be such a bottleneck. Regardless, multi-threading the Mandelbrot calculations are vital to good performance when increasing the image resolution.
+### Text file version
+
+From my testing, >50% of the time spent in this program (depending on thread count and Mandelbrot location) is waiting on ImageMagick. I didn't expect ImageMagick to be such a bottleneck. Regardless, multi-threading the Mandelbrot calculations are vital to good performance when increasing the image resolution.
 
 This program splits the image into equal vertical portions and assigns each to a different thread. This isn't particularly efficient because the top/bottom slices finish way faster than the center slices. In the future, I may edit this to instead split the image into small squares/rectangles and have the threads cooperatively work through them. However, this change will not improve ImageMagick's performance.
 
+### Magick++ version
+
+Due to using ImageMagick's C++ API rather than pasting an *enormous* text file, the Magick++ version runs much faster (>10x). ImageMagick now only takes ~15% of the total time (depending on thread count and Mandelbrot location). Also the RAM requirements for large images is much reasonable due to the enormous text file not being needed.
+
+Still, splitting the image into equal vertical portions is a moderate loss of potential performance. Oh well, there are better Mandelbrot set libraries out there, and thread workload managing libraries exist.
+
 ## Building (Linux)
 
-Just run `make`.
+Just run `make`. If you want to use Magick++ (recommended, as it's much faster!), then run `make plusplus`.
 
-Optionally, you can increase the color precision. Change `typedef uint8_t color_type;` to `typedef uint16_t color_type;` for 16-bit color. If you are making very zoomed-in images, you should probably find or make a better program because this is not very efficient for that use case, but if you want to use this one then you may have to change `typedef float c_float;` to `typedef double c_float;`.
+Optionally, you can increase the color precision. Change `typedef uint8_t color_type;` to `typedef uint16_t color_type;` for 16-bit color. If you are making very zoomed-in images, you should probably find or make a better program because this is not very efficient for that use case, but if you want to use this one then you may have to change `typedef float c_float;` to `typedef double c_float;`. Also remove `-ffast-math` from the Makefile in case float precision is really an issue.
 
 ## Running (Linux)
 
