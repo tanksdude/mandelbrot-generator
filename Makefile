@@ -1,5 +1,5 @@
 TARGET = mandelbrot.out
-CXXFLAGS = -O2 -ffast-math
+CXXFLAGS = -std=c++20 -march=native -O2 -ffast-math
 # O3 is about the same as O2, and Ofast is probably completely fine
 
 make:
