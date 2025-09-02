@@ -80,7 +80,7 @@ Example:
 
 MIT
 
-[enkiTS](https://github.com/dougbinks/enkiTS) license: MIT
+[enkiTS](https://github.com/dougbinks/enkiTS) license: zlib
 
 # Acknowledgments
 
