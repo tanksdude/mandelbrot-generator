@@ -31,6 +31,11 @@ inline std::string getImageMagickTextImageHeader(int image_width, int image_heig
 }
 #endif
 
+#ifdef USE_ENKITS
+#include "enkiTS/TaskScheduler.h"
+enki::TaskScheduler g_TS;
+#endif
+
 struct ColorRGB {
 protected:
 	color_type values[4]; //alpha not used, it's just padding
@@ -200,6 +205,37 @@ void mandelbrot_helper(c_float x_start, c_float x_end, c_float y_start, c_float 
 	//std::cout << "mandelbrot: " << "[" << image_y_start << "," << image_y_end << "] " << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms" << std::endl;
 }
 
+#ifdef USE_ENKITS
+struct MandelbrotTask : public enki::ITaskSet {
+	ImagePixel** pixelsGrid;
+	c_float x_start, x_end, y_start, y_end;
+	int image_width, image_height;
+
+	void ExecuteRange(enki::TaskSetPartition range_, uint32_t threadnum_) override {
+		int image_x_start = range_.start;
+		int image_x_end   = range_.end;
+		int image_y_start = 0;
+		int image_y_end   = image_height;
+		mandelbrot_helper(x_start, x_end, y_start, y_end, image_x_start, image_x_end, image_width, image_y_start, image_y_end, image_height, pixelsGrid);
+	}
+
+	MandelbrotTask(ImagePixel** pixels, c_float x_start, c_float x_end, c_float y_start, c_float y_end, int image_width, int image_height) {
+		m_MinRange = 16; //random guess; using 1 might net a tiny gain though
+		m_SetSize = image_width;
+		pixelsGrid = pixels;
+		this->x_start = x_start;
+		this->x_end = x_end;
+		this->y_start = y_start;
+		this->y_end = y_end;
+		this->image_width = image_width;
+		this->image_height = image_height;
+	}
+	~MandelbrotTask() override {
+		//nothing
+	}
+};
+#endif
+
 void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start, c_float y_end, int image_width, int image_height, std::string output_filename) {
 	//pixel grid to modify:
 
@@ -209,6 +245,17 @@ void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start
 	}
 
 	//main stuff:
+
+	#ifdef USE_ENKITS
+
+	MandelbrotTask* mandelbrotTask = new MandelbrotTask(pixels, x_start, x_end, y_start, y_end, image_width, image_height);
+	std::chrono::time_point<std::chrono::steady_clock> startTime = std::chrono::steady_clock::now();
+	g_TS.AddTaskSetToPipe(mandelbrotTask);
+	g_TS.WaitforTask(mandelbrotTask);
+	std::chrono::time_point<std::chrono::steady_clock> endTime = std::chrono::steady_clock::now();
+	delete mandelbrotTask;
+
+	#else
 
 	std::future<void>* results = new std::future<void>[threadCount-1];
 	std::chrono::time_point<std::chrono::steady_clock> startTime = std::chrono::steady_clock::now();
@@ -227,6 +274,8 @@ void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start
 	}
 	std::chrono::time_point<std::chrono::steady_clock> endTime = std::chrono::steady_clock::now();
 	delete[] results;
+
+	#endif
 
 	std::cout << "mandelbrot: " << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms" << std::endl;
 
@@ -326,6 +375,10 @@ int main(int argc, char** argv) {
 	if (coloring_filename.size() > 0) {
 		readColorFileAndSetColors(coloring_filename);
 	}
+
+	#ifdef USE_ENKITS
+	g_TS.Initialize(threadCount);
+	#endif
 
 	std::chrono::time_point<std::chrono::steady_clock> startTime = std::chrono::steady_clock::now();
 

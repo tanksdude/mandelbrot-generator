@@ -8,5 +8,11 @@ make:
 plusplus:
 	g++ -pthread -o $(TARGET) $(CXXFLAGS) -DUSE_MAGICK_PLUSPLUS main.cpp -lMagick++
 
+enki:
+	g++ -pthread -o $(TARGET) $(CXXFLAGS) -DUSE_ENKITS main.cpp enkiTS/TaskScheduler.cpp
+
+enkiplusplus:
+	g++ -pthread -o $(TARGET) $(CXXFLAGS) -DUSE_ENKITS -DUSE_MAGICK_PLUSPLUS main.cpp enkiTS/TaskScheduler.cpp -lMagick++
+
 clean:
 	rm -f $(TARGET)
