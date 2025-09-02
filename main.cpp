@@ -233,7 +233,8 @@ void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start
 
 	#ifdef USE_MAGICK_PLUSPLUS
 
-	Magick::Image generated_image(Magick::Geometry(image_width, image_height));
+	Magick::Image generated_image;
+	generated_image.size(Magick::Geometry(image_width, image_height));
 	for (int i = 0; i < image_width; i++) {
 		for (int j = 0; j < image_height; j++) {
 			generated_image.pixelColor(i, j, Magick::ColorRGB(pixels[i][j].getRf(), pixels[i][j].getGf(), pixels[i][j].getBf()));
