@@ -10,16 +10,15 @@
 #include <cstdint> //to be fancy with uint8_t vs uint16_t
 #include <limits> //for <cstdint>
 #include <cstdio> //could use <filesystem> but I just want remove()
-#include <cstdlib> //for system() to interact with ImageMagick
-
-#ifdef USE_MAGICK_PLUSPLUS
-#include <Magick++.h>
-#endif
 
 typedef float c_float; //complex float precision
 typedef uint8_t color_type;
 constexpr color_type COLOR_MAX_VAL = std::numeric_limits<color_type>::max();
 
+#ifdef USE_MAGICK_PLUSPLUS
+#include <Magick++.h>
+#else
+#include <cstdlib> //for system() to interact with ImageMagick
 inline int ImageMagickConvert(const std::string& output_filename) {
 	#ifdef WIN32
 	return std::system(std::string("magick "  + (output_filename + ".txt") + " " + output_filename).c_str());
@@ -27,10 +26,10 @@ inline int ImageMagickConvert(const std::string& output_filename) {
 	return std::system(std::string("convert " + (output_filename + ".txt") + " " + output_filename).c_str());
 	#endif
 }
-
 inline std::string getImageMagickTextImageHeader(int image_width, int image_height) {
 	return "# ImageMagick pixel enumeration: " + std::to_string(image_width) + "," + std::to_string(image_height) + "," + std::to_string(COLOR_MAX_VAL) + ",srgb";
 }
+#endif
 
 struct ColorRGB {
 protected:
@@ -233,6 +232,7 @@ void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start
 
 	#ifdef USE_MAGICK_PLUSPLUS
 
+	startTime = std::chrono::steady_clock::now();
 	Magick::Image generated_image;
 	generated_image.size(Magick::Geometry(image_width, image_height));
 	for (int i = 0; i < image_width; i++) {
@@ -242,6 +242,8 @@ void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start
 	}
 
 	generated_image.write(output_filename);
+	endTime = std::chrono::steady_clock::now();
+	std::cout << "magick++: " << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms" << std::endl;
 
 	#else
 
@@ -253,11 +255,11 @@ void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start
 	if (tempImageFile.is_open()) {
 		startTime = std::chrono::steady_clock::now();
 
-		tempImageFile << getImageMagickTextImageHeader(image_width, image_height) << std::endl;
+		tempImageFile << (getImageMagickTextImageHeader(image_width, image_height) + "\n");
 		std::string pixelAccumulation = "";
 		for (int i = 0; i < image_width; i++) {
 			for (int j = 0; j < image_height; j++) {
-				pixelAccumulation += pixels[i][j].toString() + "\n";
+				pixelAccumulation += (pixels[i][j].toString() + "\n");
 				//would std::accumulate be faster?
 			}
 		}
@@ -277,6 +279,8 @@ void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start
 	endTime = std::chrono::steady_clock::now();
 	std::cout << "convert: " << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms" << std::endl;
 
+	std::remove(std::string(output_filename + ".txt").c_str());
+
 	#endif
 
 	//free:
@@ -285,7 +289,6 @@ void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start
 		delete[] pixels[i];
 	}
 	delete[] pixels;
-	std::remove(std::string(output_filename + ".txt").c_str());
 }
 
 
@@ -297,9 +300,6 @@ int main(int argc, char** argv) {
 	}
 	#ifdef USE_MAGICK_PLUSPLUS
 	Magick::InitializeMagick(argv[0]);
-	//std::cout << "Using Magick++\n";
-	#else
-	//std::cout << "Slow text file version\n";
 	#endif
 
 	int threadCount; //std::thread::hardware_concurrency() exists but there's no need to use it
@@ -309,6 +309,7 @@ int main(int argc, char** argv) {
 	std::string coloring_filename;
 
 	threadCount = std::stoi(std::string(argv[1]));
+	threadCount = (threadCount < 1) ? 1 : threadCount;
 	x_start = std::stold(std::string(argv[2]));
 	x_end   = std::stold(std::string(argv[3]));
 	y_start = std::stold(std::string(argv[4]));
@@ -328,7 +329,7 @@ int main(int argc, char** argv) {
 
 	std::chrono::time_point<std::chrono::steady_clock> startTime = std::chrono::steady_clock::now();
 
-	mandelbrot((threadCount < 1 ? 1 : threadCount), x_start, x_end, y_start, y_end, image_width, image_height, output_filename);
+	mandelbrot(threadCount, x_start, x_end, y_start, y_end, image_width, image_height, output_filename);
 
 	std::chrono::time_point<std::chrono::steady_clock> endTime = std::chrono::steady_clock::now();
 
