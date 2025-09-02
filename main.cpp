@@ -170,8 +170,8 @@ void mandelbrot_helper(c_float x_start, c_float x_end, c_float y_start, c_float 
 
 	//now actually do the calculation:
 	//std::chrono::time_point<std::chrono::steady_clock> startTime = std::chrono::steady_clock::now();
-	for (int y = image_y_start; y < image_y_end; y++) {
-		for (int x = image_x_start; x < image_x_end; x++) {
+	for (int x = image_x_start; x < image_x_end; x++) {
+		for (int y = image_y_start; y < image_y_end; y++) {
 			//using the center of the pixel
 			const c_float pointX = ((c_float(x)+c_float(.5)) * (x_end - x_start)) / (image_width)  + x_start;
 			const c_float pointY = ((c_float(y)+c_float(.5)) * (y_end - y_start)) / (image_height) + y_start;
@@ -214,14 +214,14 @@ void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start
 	std::future<void>* results = new std::future<void>[threadCount-1];
 	std::chrono::time_point<std::chrono::steady_clock> startTime = std::chrono::steady_clock::now();
 	for (int i = 0; i < threadCount-1; i++) {
-		int image_x_start = 0;
-		int image_x_end   = image_width;
-		int image_y_start = (i)  /float(threadCount) * image_height;
-		int image_y_end   = (i+1)/float(threadCount) * image_height;
+		int image_x_start = (i)  /float(threadCount) * image_width;
+		int image_x_end   = (i+1)/float(threadCount) * image_width;
+		int image_y_start = 0;
+		int image_y_end   = image_height;
 		results[i] = std::async(std::launch::async, mandelbrot_helper, x_start, x_end, y_start, y_end, image_x_start, image_x_end, image_width, image_y_start, image_y_end, image_height, pixels);
 		//not bothering for error handling on thread creation
 	}
-	mandelbrot_helper(x_start, x_end, y_start, y_end, 0, image_width, image_width, (threadCount-1)/float(threadCount) * image_height, image_height, image_height, pixels);
+	mandelbrot_helper(x_start, x_end, y_start, y_end, (threadCount-1)/float(threadCount) * image_width, image_width, image_width, 0, image_height, image_height, pixels);
 
 	for (int i = 0; i < threadCount-1; i++) {
 		results[i].get();
