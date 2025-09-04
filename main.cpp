@@ -16,6 +16,7 @@ typedef uint8_t color_type;
 constexpr color_type COLOR_MAX_VAL = std::numeric_limits<color_type>::max();
 
 #ifdef USE_MAGICK_PLUSPLUS
+#include <cassert> //Magick++ makes its own assert (__assert_fail()), causes enkiTS to fail compilation
 #include <Magick++.h>
 #else
 #include <cstdlib> //for system() to interact with ImageMagick

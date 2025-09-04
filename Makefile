@@ -1,18 +1,20 @@
+CXX = g++
 TARGET = mandelbrot.out
-CXXFLAGS = -std=c++20 -march=native -O2 -ffast-math
-# O3 is about the same as O2, and Ofast is probably completely fine
+CXXFLAGS = -std=c++20 -march=native -O3 -ffast-math
+# O3 *slightly* faster than O2, and Ofast is probably completely fine
+MAGICK_FLAGS = $(shell pkg-config --cflags --libs Magick++)
 
 make:
-	g++ -pthread -o $(TARGET) $(CXXFLAGS) main.cpp
+	$(CXX) -pthread -o $(TARGET) $(CXXFLAGS) main.cpp
 
 plusplus:
-	g++ -pthread -o $(TARGET) $(CXXFLAGS) -DUSE_MAGICK_PLUSPLUS main.cpp -lMagick++
+	$(CXX) -pthread -o $(TARGET) $(CXXFLAGS) -DUSE_MAGICK_PLUSPLUS main.cpp $(MAGICK_FLAGS)
 
 enki:
-	g++ -pthread -o $(TARGET) $(CXXFLAGS) -DUSE_ENKITS main.cpp enkiTS/TaskScheduler.cpp
+	$(CXX) -pthread -o $(TARGET) $(CXXFLAGS) -DUSE_ENKITS main.cpp enkiTS/TaskScheduler.cpp
 
 enkiplusplus:
-	g++ -pthread -o $(TARGET) $(CXXFLAGS) -DUSE_ENKITS -DUSE_MAGICK_PLUSPLUS main.cpp enkiTS/TaskScheduler.cpp -lMagick++
+	$(CXX) -pthread -o $(TARGET) $(CXXFLAGS) -DUSE_ENKITS -DUSE_MAGICK_PLUSPLUS main.cpp enkiTS/TaskScheduler.cpp $(MAGICK_FLAGS)
 
 clean:
 	rm -f $(TARGET)
