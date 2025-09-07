@@ -1,41 +1,22 @@
+#include <complex>
 #include <string>
 #include <chrono>
-#include <thread>
-#include <future>
 #include <stdexcept>
 #include <iostream>
 #include <fstream>
-#include <complex>
 #include <vector>
 #include <cstdint> //to be fancy with uint8_t vs uint16_t
 #include <limits> //for <cstdint>
-#include <cstdio> //could use <filesystem> but I just want remove()
+
+#include <cassert> //Magick++ makes its own assert (__assert_fail()), causes enkiTS to fail compilation
+#include <Magick++.h>
+
+#include "enkiTS/TaskScheduler.h"
+enki::TaskScheduler g_TS;
 
 typedef float c_float; //complex float precision
 typedef uint8_t color_type;
 constexpr color_type COLOR_MAX_VAL = std::numeric_limits<color_type>::max();
-
-#ifdef USE_MAGICK_PLUSPLUS
-#include <cassert> //Magick++ makes its own assert (__assert_fail()), causes enkiTS to fail compilation
-#include <Magick++.h>
-#else
-#include <cstdlib> //for system() to interact with ImageMagick
-inline int ImageMagickConvert(const std::string& output_filename) {
-	#ifdef WIN32
-	return std::system(std::string("magick "  + (output_filename + ".txt") + " " + output_filename).c_str());
-	#else
-	return std::system(std::string("convert " + (output_filename + ".txt") + " " + output_filename).c_str());
-	#endif
-}
-inline std::string getImageMagickTextImageHeader(int image_width, int image_height) {
-	return "# ImageMagick pixel enumeration: " + std::to_string(image_width) + "," + std::to_string(image_height) + "," + std::to_string(COLOR_MAX_VAL) + ",srgb";
-}
-#endif
-
-#ifdef USE_ENKITS
-#include "enkiTS/TaskScheduler.h"
-enki::TaskScheduler g_TS;
-#endif
 
 struct ColorRGB {
 protected:
@@ -65,9 +46,6 @@ public:
 	}
 	ImagePixel() {} //just so things compile
 
-	std::string toString() const {
-		return std::to_string(xpos) + "," + std::to_string(ypos) + ": (" + std::to_string(color.getR()) + "," + std::to_string(color.getG()) + "," + std::to_string(color.getB()) + ")";
-	}
 	inline c_float getRf() const noexcept { return color.getR() / COLOR_MAX_VAL; }
 	inline c_float getGf() const noexcept { return color.getG() / COLOR_MAX_VAL; }
 	inline c_float getBf() const noexcept { return color.getB() / COLOR_MAX_VAL; }
@@ -206,7 +184,6 @@ void mandelbrot_helper(c_float x_start, c_float x_end, c_float y_start, c_float 
 	//std::cout << "mandelbrot: " << "[" << image_y_start << "," << image_y_end << "] " << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms" << std::endl;
 }
 
-#ifdef USE_ENKITS
 struct MandelbrotTask : public enki::ITaskSet {
 	ImagePixel** pixelsGrid;
 	c_float x_start, x_end, y_start, y_end;
@@ -235,9 +212,8 @@ struct MandelbrotTask : public enki::ITaskSet {
 		//nothing
 	}
 };
-#endif
 
-void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start, c_float y_end, int image_width, int image_height, std::string output_filename) {
+void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start, c_float y_end, int image_width, int image_height, const std::string& output_filename) {
 	//pixel grid to modify:
 
 	ImagePixel** pixels = new ImagePixel*[image_width];
@@ -245,9 +221,7 @@ void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start
 		pixels[i] = new ImagePixel[image_height];
 	}
 
-	//main stuff:
-
-	#ifdef USE_ENKITS
+	//calculate mandelbrot:
 
 	MandelbrotTask* mandelbrotTask = new MandelbrotTask(pixels, x_start, x_end, y_start, y_end, image_width, image_height);
 	std::chrono::time_point<std::chrono::steady_clock> startTime = std::chrono::steady_clock::now();
@@ -256,31 +230,9 @@ void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start
 	std::chrono::time_point<std::chrono::steady_clock> endTime = std::chrono::steady_clock::now();
 	delete mandelbrotTask;
 
-	#else
-
-	std::future<void>* results = new std::future<void>[threadCount-1];
-	std::chrono::time_point<std::chrono::steady_clock> startTime = std::chrono::steady_clock::now();
-	for (int i = 0; i < threadCount-1; i++) {
-		int image_x_start = (i)  /float(threadCount) * image_width;
-		int image_x_end   = (i+1)/float(threadCount) * image_width;
-		int image_y_start = 0;
-		int image_y_end   = image_height;
-		results[i] = std::async(std::launch::async, mandelbrot_helper, x_start, x_end, y_start, y_end, image_x_start, image_x_end, image_width, image_y_start, image_y_end, image_height, pixels);
-		//not bothering for error handling on thread creation
-	}
-	mandelbrot_helper(x_start, x_end, y_start, y_end, (threadCount-1)/float(threadCount) * image_width, image_width, image_width, 0, image_height, image_height, pixels);
-
-	for (int i = 0; i < threadCount-1; i++) {
-		results[i].get();
-	}
-	std::chrono::time_point<std::chrono::steady_clock> endTime = std::chrono::steady_clock::now();
-	delete[] results;
-
-	#endif
-
 	std::cout << "mandelbrot: " << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms" << std::endl;
 
-	#ifdef USE_MAGICK_PLUSPLUS
+	//write image:
 
 	startTime = std::chrono::steady_clock::now();
 	Magick::Image generated_image;
@@ -294,44 +246,6 @@ void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start
 	generated_image.write(output_filename);
 	endTime = std::chrono::steady_clock::now();
 	std::cout << "magick++: " << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms" << std::endl;
-
-	#else
-
-	//text file for ImageMagick:
-	//could be multi-threaded, but this step usually takes <10% of the total time
-
-	std::ofstream tempImageFile;
-	tempImageFile.open(output_filename + ".txt");
-	if (tempImageFile.is_open()) {
-		startTime = std::chrono::steady_clock::now();
-
-		tempImageFile << (getImageMagickTextImageHeader(image_width, image_height) + "\n");
-		std::string pixelAccumulation = "";
-		for (int i = 0; i < image_width; i++) {
-			for (int j = 0; j < image_height; j++) {
-				pixelAccumulation += (pixels[i][j].toString() + "\n");
-				//would std::accumulate be faster?
-			}
-		}
-		tempImageFile << pixelAccumulation;
-		tempImageFile.close();
-
-		endTime = std::chrono::steady_clock::now();
-		std::cout << "stringify: " << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms" << std::endl;
-	} else {
-		throw std::runtime_error("Could not open file \"" + (output_filename + ".txt") + "\"");
-	}
-
-	//magick convert:
-
-	startTime = std::chrono::steady_clock::now();
-	ImageMagickConvert(output_filename);
-	endTime = std::chrono::steady_clock::now();
-	std::cout << "convert: " << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms" << std::endl;
-
-	std::remove(std::string(output_filename + ".txt").c_str());
-
-	#endif
 
 	//free:
 
@@ -348,9 +262,7 @@ int main(int argc, char** argv) {
 		std::cout << "usage: " << argv[0] << " <num_threads> <x_start> <x_end> <y_start> <y_end> <image_x_size> <image_y_size> <output_name> [<optional coloring file>]" << std::endl;
 		return 1;
 	}
-	#ifdef USE_MAGICK_PLUSPLUS
 	Magick::InitializeMagick(argv[0]);
-	#endif
 
 	int threadCount; //std::thread::hardware_concurrency() exists but there's no need to use it
 	c_float x_start, x_end, y_start, y_end;
@@ -377,9 +289,7 @@ int main(int argc, char** argv) {
 		readColorFileAndSetColors(coloring_filename);
 	}
 
-	#ifdef USE_ENKITS
 	g_TS.Initialize(threadCount);
-	#endif
 
 	std::chrono::time_point<std::chrono::steady_clock> startTime = std::chrono::steady_clock::now();
 
