@@ -15,57 +15,37 @@
 enki::TaskScheduler g_TS;
 
 typedef float c_float; //complex float precision
-typedef uint8_t color_type;
-constexpr color_type COLOR_MAX_VAL = std::numeric_limits<color_type>::max();
-
-struct ColorRGB {
-protected:
-	color_type values[4]; //alpha not used, it's just padding
-public:
-	ColorRGB(float r, float g, float b) {
-		values[0] = r * COLOR_MAX_VAL;
-		values[1] = g * COLOR_MAX_VAL;
-		values[2] = b * COLOR_MAX_VAL;
-		//not bothering to error check bounds (use std::clamp if you want to)
-	}
-	ColorRGB() {} //just so things compile
-	inline color_type getR() const noexcept { return values[0]; }
-	inline color_type getG() const noexcept { return values[1]; }
-	inline color_type getB() const noexcept { return values[2]; }
-};
 
 struct ImagePixel {
 protected:
-	ColorRGB color;
+	Magick::ColorRGB color;
 	int xpos, ypos;
 public:
-	ImagePixel(int x, int y, const ColorRGB& c) : color(c) {
+	ImagePixel(int x, int y, const Magick::ColorRGB& c) : color(c) {
 		//color = c;
 		xpos = x;
 		ypos = y;
 	}
 	ImagePixel() {} //just so things compile
 
-	inline c_float getRf() const noexcept { return color.getR() / COLOR_MAX_VAL; }
-	inline c_float getGf() const noexcept { return color.getG() / COLOR_MAX_VAL; }
-	inline c_float getBf() const noexcept { return color.getB() / COLOR_MAX_VAL; }
+	inline const Magick::ColorRGB& getColor() const noexcept { return color; }
 };
 
 int MAX_ITER = 10000;
-std::vector<std::pair<int, ColorRGB>> iterationColors = {
+std::vector<std::pair<int, Magick::ColorRGB>> iterationColors = {
 	//iteration count will always be >0
-	{    1, ColorRGB(0, 0, 0) }, //black
-	//{    4, ColorRGB(  0,   0, .01) }, //dark blue
-	//{    5, ColorRGB(  0,   0, .05) }, //less dark blue
-	//{   10, ColorRGB(  0, .25, .25) }, //quarter-turquoise
-	{   15, ColorRGB(  0, .50, .50) }, //half-turquoise
-	{   20, ColorRGB(  0,   1,   1) }, //full-turquoise //where it starts being close enough to the main pattern
-	{   30, ColorRGB(  1,   1,   0) }, //yellow
-	{  100, ColorRGB(  1, .75,   0) }, //yellow-orange
-	{  500, ColorRGB(  1, .50,   0) }, //orange
-	{ 1000, ColorRGB(  1, .25,   0) }, //orange-red
-	{ 5000, ColorRGB(.25,   0,   0) }, //darker red
-	{ MAX_ITER, ColorRGB(0, 0, 0) } //black
+	{    1, Magick::ColorRGB(0, 0, 0) }, //black
+	//{    4, Magick::ColorRGB(  0,   0, .01) }, //dark blue
+	//{    5, Magick::ColorRGB(  0,   0, .05) }, //less dark blue
+	//{   10, Magick::ColorRGB(  0, .25, .25) }, //quarter-turquoise
+	{   15, Magick::ColorRGB(  0, .50, .50) }, //half-turquoise
+	{   20, Magick::ColorRGB(  0,   1,   1) }, //full-turquoise //where it starts being close enough to the main pattern
+	{   30, Magick::ColorRGB(  1,   1,   0) }, //yellow
+	{  100, Magick::ColorRGB(  1, .75,   0) }, //yellow-orange
+	{  500, Magick::ColorRGB(  1, .50,   0) }, //orange
+	{ 1000, Magick::ColorRGB(  1, .25,   0) }, //orange-red
+	{ 5000, Magick::ColorRGB(.25,   0,   0) }, //darker red
+	{ MAX_ITER, Magick::ColorRGB(0, 0, 0) } //black
 };
 //idea: option for linear interpolation for color boundaries
 
@@ -122,9 +102,10 @@ void readColorFileAndSetColors(const std::string& filename) {
 
 			int iter; float r, g, b;
 			iter = std::stoi(iterations);
-			r = std::stof(colorR);
-			g = std::stof(colorG);
-			b = std::stof(colorB);
+			r = std::stod(colorR);
+			g = std::stod(colorG);
+			b = std::stod(colorB);
+			//double because Magick::ColorRGB takes doubles
 
 			iterationColors.push_back({ iter, {r, g, b} });
 		}
@@ -198,7 +179,7 @@ struct MandelbrotTask : public enki::ITaskSet {
 	}
 
 	MandelbrotTask(ImagePixel** pixels, c_float x_start, c_float x_end, c_float y_start, c_float y_end, int image_width, int image_height) {
-		m_MinRange = 16; //random guess; using 1 might net a tiny gain though
+		m_MinRange = 1; //smaller ranges don't help tiny images, but they slightly help very large images
 		m_SetSize = image_width;
 		pixelsGrid = pixels;
 		this->x_start = x_start;
@@ -239,7 +220,7 @@ void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start
 	generated_image.size(Magick::Geometry(image_width, image_height));
 	for (int i = 0; i < image_width; i++) {
 		for (int j = 0; j < image_height; j++) {
-			generated_image.pixelColor(i, j, Magick::ColorRGB(pixels[i][j].getRf(), pixels[i][j].getGf(), pixels[i][j].getBf()));
+			generated_image.pixelColor(i, j, pixels[i][j].getColor());
 		}
 	}
 
