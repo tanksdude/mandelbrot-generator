@@ -16,21 +16,6 @@ enki::TaskScheduler g_TS;
 
 typedef float c_float; //complex float precision
 
-struct ImagePixel {
-protected:
-	Magick::ColorRGB color;
-	int xpos, ypos;
-public:
-	ImagePixel(int x, int y, const Magick::ColorRGB& c) : color(c) {
-		//color = c;
-		xpos = x;
-		ypos = y;
-	}
-	ImagePixel() {} //just so things compile
-
-	inline const Magick::ColorRGB& getColor() const noexcept { return color; }
-};
-
 int MAX_ITER = 10000;
 std::vector<std::pair<int, Magick::ColorRGB>> iterationColors = {
 	//iteration count will always be >0
@@ -126,7 +111,26 @@ void readColorFileAndSetColors(const std::string& filename) {
 	}
 }
 
-void mandelbrot_helper(c_float x_start, c_float x_end, c_float y_start, c_float y_end, int image_x_start, int image_x_end, int image_width, int image_y_start, int image_y_end, int image_height, ImagePixel** pixelGrid) {
+struct MandelbrotTask : public enki::ITaskSet {
+	#ifdef USE_IM6
+	Magick::PixelPacket* pixel_arr;
+	MandelbrotTask(Magick::PixelPacket* pixels, c_float x_start, c_float x_end, c_float y_start, c_float y_end, int image_width, int image_height);
+	#else
+	Magick::Quantum* pixel_arr;
+	MandelbrotTask(Magick::Quantum* pixels, c_float x_start, c_float x_end, c_float y_start, c_float y_end, int image_width, int image_height);
+	#endif
+
+	c_float x_start, x_end, y_start, y_end;
+	int image_width, image_height;
+
+	void ExecuteRange(enki::TaskSetPartition range_, uint32_t threadnum_) override;
+};
+
+#ifdef USE_IM6
+void mandelbrot_helper(c_float x_start, c_float x_end, c_float y_start, c_float y_end, int image_x_start, int image_x_end, int image_width, int image_y_start, int image_y_end, int image_height, Magick::PixelPacket* pixel_arr) {
+#else
+void mandelbrot_helper(c_float x_start, c_float x_end, c_float y_start, c_float y_end, int image_x_start, int image_x_end, int image_width, int image_y_start, int image_y_end, int image_height, Magick::Quantum* pixel_arr) {
+#endif
 	//flip y-range because images have the y-axis going down:
 	y_start *= -1;
 	y_end *= -1;
@@ -134,8 +138,8 @@ void mandelbrot_helper(c_float x_start, c_float x_end, c_float y_start, c_float 
 
 	//now actually do the calculation:
 	//std::chrono::time_point<std::chrono::steady_clock> startTime = std::chrono::steady_clock::now();
-	for (int x = image_x_start; x < image_x_end; x++) {
-		for (int y = image_y_start; y < image_y_end; y++) {
+	for (int y = image_y_start; y < image_y_end; y++) {
+		for (int x = image_x_start; x < image_x_end; x++) {
 			//using the center of the pixel
 			const c_float pointX = ((c_float(x)+c_float(.5)) * (x_end - x_start)) / (image_width)  + x_start;
 			const c_float pointY = ((c_float(y)+c_float(.5)) * (y_end - y_start)) / (image_height) + y_start;
@@ -157,7 +161,16 @@ void mandelbrot_helper(c_float x_start, c_float x_end, c_float y_start, c_float 
 					break;
 				}
 			}
-			pixelGrid[x][y] = ImagePixel(x, y, iterationColors[colorIndex].second);
+
+			#ifdef USE_IM6
+			const int arr_pos = y * image_width + x;
+			pixel_arr[arr_pos] = iterationColors[colorIndex].second;
+			#else
+			const int arr_pos = 3 * (y * image_width + x); //ColorRGB does not have an alpha channel
+			pixel_arr[arr_pos + 0] = iterationColors[colorIndex].second.quantumRed();
+			pixel_arr[arr_pos + 1] = iterationColors[colorIndex].second.quantumGreen();
+			pixel_arr[arr_pos + 2] = iterationColors[colorIndex].second.quantumBlue();
+			#endif
 		}
 	}
 	//std::chrono::time_point<std::chrono::steady_clock> endTime = std::chrono::steady_clock::now();
@@ -165,75 +178,63 @@ void mandelbrot_helper(c_float x_start, c_float x_end, c_float y_start, c_float 
 	//std::cout << "mandelbrot: " << "[" << image_y_start << "," << image_y_end << "] " << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms" << std::endl;
 }
 
-struct MandelbrotTask : public enki::ITaskSet {
-	ImagePixel** pixelsGrid;
-	c_float x_start, x_end, y_start, y_end;
-	int image_width, image_height;
-
-	void ExecuteRange(enki::TaskSetPartition range_, uint32_t threadnum_) override {
-		int image_x_start = range_.start;
-		int image_x_end   = range_.end;
-		int image_y_start = 0;
-		int image_y_end   = image_height;
-		mandelbrot_helper(x_start, x_end, y_start, y_end, image_x_start, image_x_end, image_width, image_y_start, image_y_end, image_height, pixelsGrid);
-	}
-
-	MandelbrotTask(ImagePixel** pixels, c_float x_start, c_float x_end, c_float y_start, c_float y_end, int image_width, int image_height) {
-		m_MinRange = 1; //smaller ranges don't help tiny images, but they slightly help very large images
-		m_SetSize = image_width;
-		pixelsGrid = pixels;
-		this->x_start = x_start;
-		this->x_end = x_end;
-		this->y_start = y_start;
-		this->y_end = y_end;
-		this->image_width = image_width;
-		this->image_height = image_height;
-	}
-	~MandelbrotTask() override {
-		//nothing
-	}
-};
-
 void mandelbrot(int threadCount, c_float x_start, c_float x_end, c_float y_start, c_float y_end, int image_width, int image_height, const std::string& output_filename) {
-	//pixel grid to modify:
+	//get image ready:
 
-	ImagePixel** pixels = new ImagePixel*[image_width];
-	for (int i = 0; i < image_width; i++) {
-		pixels[i] = new ImagePixel[image_height];
-	}
+	Magick::Image generated_image;
+	generated_image.size(Magick::Geometry(image_width, image_height));
+	//generated_image.type(Magick::TrueColorType);
+	generated_image.modifyImage();
+	Magick::Pixels view(generated_image);
+	#ifdef USE_IM6
+	Magick::PixelPacket* pixel_arr = view.get(0, 0, image_width, image_height);
+	//https://legacy.imagemagick.org/Magick++/Pixels.html
+	#else
+	Magick::Quantum* pixel_arr = view.get(0, 0, image_width, image_height);
+	//https://imagemagick.org/Magick++/Pixels.html
+	#endif
 
 	//calculate mandelbrot:
 
-	MandelbrotTask* mandelbrotTask = new MandelbrotTask(pixels, x_start, x_end, y_start, y_end, image_width, image_height);
+	MandelbrotTask* mandelbrotTask = new MandelbrotTask(pixel_arr, x_start, x_end, y_start, y_end, image_width, image_height);
 	std::chrono::time_point<std::chrono::steady_clock> startTime = std::chrono::steady_clock::now();
 	g_TS.AddTaskSetToPipe(mandelbrotTask);
 	g_TS.WaitforTask(mandelbrotTask);
 	std::chrono::time_point<std::chrono::steady_clock> endTime = std::chrono::steady_clock::now();
 	delete mandelbrotTask;
-
 	std::cout << "mandelbrot: " << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms" << std::endl;
 
 	//write image:
 
 	startTime = std::chrono::steady_clock::now();
-	Magick::Image generated_image;
-	generated_image.size(Magick::Geometry(image_width, image_height));
-	for (int i = 0; i < image_width; i++) {
-		for (int j = 0; j < image_height; j++) {
-			generated_image.pixelColor(i, j, pixels[i][j].getColor());
-		}
-	}
-
+	view.sync();
 	generated_image.write(output_filename);
 	endTime = std::chrono::steady_clock::now();
-	std::cout << "magick++: " << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms" << std::endl;
+	std::cout << "write: " << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() << "ms" << std::endl;
+}
 
-	//free:
+void MandelbrotTask::ExecuteRange(enki::TaskSetPartition range_, uint32_t threadnum_) {
+	int image_x_start = 0;
+	int image_x_end   = image_width;
+	int image_y_start = range_.start;
+	int image_y_end   = range_.end;
+	mandelbrot_helper(x_start, x_end, y_start, y_end, image_x_start, image_x_end, image_width, image_y_start, image_y_end, image_height, pixel_arr);
+}
 
-	for (int i = 0; i < image_width; i++) {
-		delete[] pixels[i];
-	}
-	delete[] pixels;
+#ifdef USE_IM6
+MandelbrotTask::MandelbrotTask(Magick::PixelPacket* pixels, c_float x_start, c_float x_end, c_float y_start, c_float y_end, int image_width, int image_height) {
+#else
+MandelbrotTask::MandelbrotTask(Magick::Quantum* pixels, c_float x_start, c_float x_end, c_float y_start, c_float y_end, int image_width, int image_height) {
+#endif
+	m_MinRange = 1; //smaller ranges don't help tiny images, but they slightly help very large images
+	m_SetSize = image_height;
+	pixel_arr = pixels;
+	this->x_start = x_start;
+	this->x_end = x_end;
+	this->y_start = y_start;
+	this->y_end = y_end;
+	this->image_width = image_width;
+	this->image_height = image_height;
 }
 
 
